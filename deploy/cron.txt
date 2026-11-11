@@ -1,0 +1,6 @@
+# crontab -e (sebagai user aplikasi, mis. www-data atau deploy)
+MAILTO=""
+* * * * * cd /var/www/pinjaman && php artisan schedule:run >> /dev/null 2>&1
+
+# Salinan backup ke luar server (contoh rclone, setelah 'rclone config' dibuat dengan nama "offsite"):
+30 2 * * * rclone copy /var/backups/pinjaman offsite:pinjaman-backup --max-age 2d >> /var/log/pinjaman-offsite.log 2>&1
