@@ -24,6 +24,7 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'role' => Role::class,
             'aktif' => 'boolean',
+            'password_changed_at' => 'datetime'
         ];
     }
 
