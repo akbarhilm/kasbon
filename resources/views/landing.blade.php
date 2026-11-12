@@ -4,6 +4,7 @@
     $label = $loggedIn ? 'Buka aplikasi' : 'Masuk';
     $name = config('app.name');
 @endphp
+
 <!DOCTYPE html>
 <html lang="id">
 <head>

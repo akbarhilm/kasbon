@@ -54,12 +54,11 @@ class AdminPanelProvider extends PanelProvider
                 DispatchServingFilamentEvent::class,
             ])
             ->profile(\App\Filament\Pages\Auth\EditProfile::class)
-   ->authMiddleware([
-       Authenticate::class,
-       \App\Http\Middleware\EnsureUserIsActive::class,
-       \App\Http\Middleware\EnsurePasswordChanged::class,
-  
+            ->authMiddleware([
                 Authenticate::class,
-            ]);
+                \App\Http\Middleware\EnsureUserIsActive::class,
+                \App\Http\Middleware\EnsurePasswordChanged::class,
+                Authenticate::class,
+             ]);
     }
 }
