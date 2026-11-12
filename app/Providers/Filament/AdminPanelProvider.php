@@ -26,7 +26,7 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->path('admin')
+            ->path('app')
             ->login()
             ->colors([
                 'primary' => Color::Amber,
@@ -53,7 +53,7 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
-            ->profile()
+            ->profile(\App\Filament\Pages\Auth\EditProfile::class)
    ->authMiddleware([
        Authenticate::class,
        \App\Http\Middleware\EnsureUserIsActive::class,
