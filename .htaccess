@@ -1,0 +1,20 @@
+# .htaccess di ROOT repository (hasil deploy ke public_html).
+# Semua permintaan diteruskan ke folder public/ milik Laravel, dan file internal aplikasi diblokir.
+# Hostinger shared tidak mengizinkan document root diubah, sehingga ini pengganti konfigurasi server.
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Blokir file tersembunyi (.env, .git, dst), kecuali .well-known untuk validasi SSL
+    RewriteRule ^\.(?!well-known) - [F,L]
+
+    # 2. Blokir folder dan file internal aplikasi (pengaman tambahan)
+    RewriteRule ^(app|bootstrap|config|database|deploy|resources|routes|storage|tests|vendor)(/|$) - [F,L]
+    RewriteRule ^(artisan|composer\.json|composer\.lock|package\.json|package-lock\.json|phpunit\.xml|README.*\.md|.*\.sh)$ - [F,L]
+
+    # 3. Teruskan semua permintaan lain ke public/ (tanpa loop)
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
