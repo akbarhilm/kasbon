@@ -46,9 +46,9 @@ class BorrowerResource extends Resource
         return $schema->components([
             TextInput::make('nomor_anggota')
                 ->label('No. anggota')
-                ->default(fn (): string => app(MemberNumberService::class)->next((int) auth()->user()->branch_id))
+                ->default(fn (): string => app(MemberNumberService::class)->preview((int) auth()->user()->branch_id))
                 ->disabled()
-                ->dehydrated()
+                ->dehydrated(false)
                ->helperText('Dibuat otomatis berdasarkan cabang Anda.'),
             TextInput::make('nik')
                 ->label('NIK')
