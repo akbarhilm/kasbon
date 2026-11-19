@@ -9,7 +9,9 @@ use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class CreateLoan extends CreateRecord
@@ -26,8 +28,10 @@ class CreateLoan extends CreateRecord
         // Cabang hanya boleh mencairkan pinjaman untuk peminjam cabangnya sendiri.
         abort_unless($borrower->branch_id === $user->branch_id, 403);
 
+        $foto = array_values($data['foto'] ?? []);
+
         try {
-            return DB::transaction(function () use ($borrower, $data, $user) {
+            return DB::transaction(function () use ($borrower, $data, $user, $foto) {
                 // Kontak peminjam dapat diperbarui dari halaman pengajuan (tercatat di audit log lewat observer).
                 $borrower->update([
                     'no_hp' => $data['no_hp'],
@@ -41,13 +45,20 @@ class CreateLoan extends CreateRecord
                     (int) $data['tenor_bulan'],
                     Carbon::parse($data['dicairkan_pada']),
                     $user,
+                    $foto,
                 );
             });
-        } catch (ValidationException $e) {
-            Notification::make()
-                ->title((string) collect($e->errors())->flatten()->first())
-                ->danger()
-                ->send();
+        } catch (ValidationException|UniqueConstraintViolationException $e) {
+            // Pinjaman gagal dibuat: hapus foto yang sudah terunggah agar tidak menjadi yatim.
+            if ($foto !== []) {
+                Storage::disk('local')->delete($foto);
+            }
+
+            $message = $e instanceof ValidationException
+                ? (string) collect($e->errors())->flatten()->first()
+                : 'Peminjam sudah memiliki pinjaman aktif (permintaan bersamaan).';
+
+            Notification::make()->title($message)->danger()->send();
 
             $this->halt();
         }

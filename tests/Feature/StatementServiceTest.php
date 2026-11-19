@@ -80,7 +80,7 @@ class StatementServiceTest extends TestCase
     {
         [$branch, $user] = $this->branchWithUser('B01', 10_000_000);
 
-        $borrower = Borrower::create(['branch_id' => $branch->id, 'nama' => 'Budi', 'no_hp' => '0811']);
+        $borrower = Borrower::create(['branch_id' => $branch->id, 'nama' => 'Budi', 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811']);
         app(LoanService::class)->disburse($borrower, 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $user);
 
         $this->postEntry($branch, $user, LedgerPos::PenambahanModal, Arah::Masuk, 2_000_000, '2026-06-15 09:00', 'Modal');
@@ -109,7 +109,7 @@ class StatementServiceTest extends TestCase
     public function test_loan_entries_show_borrower_name(): void
     {
         [$branch, $user] = $this->branchWithUser('B01', 10_000_000);
-        $borrower = Borrower::create(['branch_id' => $branch->id, 'nama' => 'Budi', 'no_hp' => '0811']);
+        $borrower = Borrower::create(['branch_id' => $branch->id, 'nama' => 'Budi', 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811']);
         app(LoanService::class)->disburse($borrower, 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $user);
 
         $statement = app(StatementService::class)->build($branch->id, $this->at('2026-06-01 09:00'), $this->at('2026-06-01 23:59'));
@@ -122,7 +122,7 @@ class StatementServiceTest extends TestCase
         [$b1, $u1] = $this->branchWithUser('B01', 10_000_000);
         [$b2] = $this->branchWithUser('B02', 20_000_000);
 
-        $borrower = Borrower::create(['branch_id' => $b1->id, 'nama' => 'Budi', 'no_hp' => '0811']);
+        $borrower = Borrower::create(['branch_id' => $b1->id, 'nama' => 'Budi', 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811']);
         app(LoanService::class)->disburse($borrower, 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $u1);
         $this->postEntry($b1, $u1, LedgerPos::PenambahanModal, Arah::Masuk, 2_000_000, '2026-06-15 09:00', 'Modal');
         $this->postEntry($b1, $u1, LedgerPos::Penarikan, Arah::Keluar, 1_000_000, '2026-06-20 09:00', 'Tarik');

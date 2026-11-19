@@ -22,6 +22,7 @@ class Loan extends Model
             'dilunasi_pada' => 'datetime',
             'jatuh_tempo' => 'date',
             'persen_admin' => 'decimal:2',
+            'foto' => 'array',
         ];
     }
 

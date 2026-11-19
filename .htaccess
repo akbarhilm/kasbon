@@ -1,6 +1,10 @@
 # .htaccess di ROOT repository (hasil deploy ke public_html).
 # Semua permintaan diteruskan ke folder public/ milik Laravel, dan file internal aplikasi diblokir.
 # Hostinger shared tidak mengizinkan document root diubah, sehingga ini pengganti konfigurasi server.
+#
+# CATATAN: folder "app" TIDAK diblokir di sini karena panel aplikasi berada di URL /app (mis. /app/login).
+# Isi folder app/ tetap aman: semua permintaan dipetakan ke public/, sehingga /app/Models/User.php
+# menjadi public/app/Models/User.php yang tidak ada (404).
 
 Options -Indexes
 
@@ -11,7 +15,7 @@ Options -Indexes
     RewriteRule ^\.(?!well-known) - [F,L]
 
     # 2. Blokir folder dan file internal aplikasi (pengaman tambahan)
-    RewriteRule ^(app|bootstrap|config|database|deploy|resources|routes|storage|tests|vendor)(/|$) - [F,L]
+    RewriteRule ^(bootstrap|config|database|deploy|resources|routes|storage|tests|vendor)(/|$) - [F,L]
     RewriteRule ^(artisan|composer\.json|composer\.lock|package\.json|package-lock\.json|phpunit\.xml|README.*\.md|.*\.sh)$ - [F,L]
 
     # 3. Teruskan semua permintaan lain ke public/ (tanpa loop)

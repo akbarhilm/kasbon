@@ -56,7 +56,7 @@ class LoanFlowTest extends TestCase
         $this->borrower = Borrower::create([
             'branch_id' => $this->branch->id,
             'nama' => 'Budi',
-            'no_hp' => '0811000111',
+            'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811000111',
         ]);
 
         app(LedgerService::class)->post(

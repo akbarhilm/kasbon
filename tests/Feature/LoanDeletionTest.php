@@ -60,7 +60,7 @@ class LoanDeletionTest extends TestCase
         ]);
         $this->sa->save();
 
-        $this->borrower = Borrower::create(['branch_id' => $this->branch->id, 'nama' => 'Budi', 'no_hp' => '0811']);
+        $this->borrower = Borrower::create(['branch_id' => $this->branch->id, 'nama' => 'Budi', 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811']);
 
         app(LedgerService::class)->post(
             $this->branch->id, LedgerPos::SaldoAwal, Arah::Masuk, 10_000_000,

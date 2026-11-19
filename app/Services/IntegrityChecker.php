@@ -32,7 +32,7 @@ final class IntegrityChecker
         $ledger = $this->ledgerByLoan();
         $payments = Payment::query()->get()->groupBy('loan_id');
 
-        foreach (Loan::withTrashed()->orderBy('id')->cursor() as $loan) {
+        foreach (Loan::withTrashed()->with('borrower')->orderBy('id')->lazy() as $loan) {
             $obj = "Pinjaman #{$loan->id}";
             $pokok = (int) $loan->pokok;
             $isActive = $loan->status === LoanStatus::Aktif && ! $loan->trashed();
@@ -43,6 +43,14 @@ final class IntegrityChecker
             if (! $isActive && $loan->active_borrower_id !== null) {
                 $add('error', 'FLAG_TIDAK_AKTIF', $obj, 'Pinjaman tidak aktif tetapi penanda pinjaman aktif masih terisi.');
             }
+            $nik = $loan->borrower?->nik;
+            if ($isActive && $loan->active_nik !== $nik) {
+                $add('error', 'FLAG_NIK', $obj, 'Penanda NIK pinjaman aktif tidak sama dengan NIK peminjam.');
+            }
+            if (! $isActive && $loan->active_nik !== null) {
+                $add('error', 'FLAG_NIK_TIDAK_AKTIF', $obj, 'Pinjaman tidak aktif tetapi penanda NIK aktif masih terisi.');
+            }
+
             if ($loan->tenor_bulan < 1 || $loan->tenor_bulan > $maxTenor) {
                 $add('error', 'TENOR', $obj, "Tenor {$loan->tenor_bulan} bulan di luar batas 1 sampai {$maxTenor}.");
             }
@@ -118,6 +126,19 @@ final class IntegrityChecker
 
         foreach ($duplicates as $borrowerId => $jumlah) {
             $add('error', 'PINJAMAN_GANDA', "Peminjam #{$borrowerId}", "Memiliki {$jumlah} pinjaman aktif.");
+        }
+
+        $duplicateNik = Loan::query()
+            ->join('borrowers', 'borrowers.id', '=', 'loans.borrower_id')
+            ->where('loans.status', LoanStatus::Aktif)
+            ->whereNotNull('borrowers.nik')
+            ->select('borrowers.nik', DB::raw('COUNT(*) AS jumlah'))
+            ->groupBy('borrowers.nik')
+            ->having('jumlah', '>', 1)
+            ->pluck('jumlah', 'nik');
+
+        foreach ($duplicateNik as $nik => $jumlah) {
+            $add('error', 'PINJAMAN_GANDA_NIK', 'NIK ' . \App\Models\Borrower::mask((string) $nik), "Memiliki {$jumlah} pinjaman aktif di seluruh cabang.");
         }
 
         $invalid = LedgerEntry::query()->where('jumlah', '<=', 0)->count();

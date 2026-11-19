@@ -73,7 +73,7 @@ class IntegrityCheckerTest extends TestCase
 
     private function borrower(string $nama): Borrower
     {
-        return Borrower::create(['branch_id' => $this->branch->id, 'nama' => $nama, 'no_hp' => '08' . random_int(100000, 999999)]);
+        return Borrower::create(['branch_id' => $this->branch->id, 'nama' => $nama, 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '08' . random_int(100000, 999999)]);
     }
 
     /** Aktif (L2), lunas dengan denda (L1), dan terhapus (L3). */

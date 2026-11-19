@@ -19,10 +19,12 @@ use BackedEnum;
 use Carbon\Carbon;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -74,10 +76,12 @@ class LoanResource extends Resource
                 ->options(fn (): array => Borrower::query()
                     ->where('branch_id', auth()->user()->branch_id)
                     ->whereDoesntHave('loans', fn (Builder $q) => $q->where('status', LoanStatus::Aktif))
+                    ->whereNotNull('nik')
+                    ->whereNotIn('nik', Loan::query()->whereNotNull('active_nik')->select('active_nik'))
                     ->orderBy('nama')
                     ->pluck('nama', 'id')
                     ->all())
-                ->helperText('Hanya peminjam tanpa pinjaman aktif yang ditampilkan.')
+                ->helperText('Hanya peminjam ber-NIK yang tidak punya pinjaman aktif (di cabang mana pun) yang ditampilkan.')
                 ->live()
                 ->afterStateUpdated(function ($state, Set $set): void {
                     $borrower = Borrower::query()->find($state);
@@ -123,6 +127,19 @@ class LoanResource extends Resource
                     ->all())
                 ->required()
                 ->live(),
+            FileUpload::make('foto')
+                ->label('Foto')
+                ->image()
+                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                ->multiple()
+                ->maxFiles((int) config('pinjaman.foto_max_files', 5))
+                ->maxSize((int) config('pinjaman.foto_max_kb', 2048))
+                ->disk('local')
+                ->directory('foto-pinjaman')
+                ->visibility('private')
+                ->required(fn (): bool => (bool) config('pinjaman.foto_required'))
+                ->helperText('Format JPG, PNG, atau WebP. Maksimal 5 foto, masing-masing 2 MB. Foto disimpan privat.')
+                ->columnSpanFull(),
             TextEntry::make('pratinjau')
                 ->label('Pratinjau')
                 ->columnSpanFull()
@@ -150,6 +167,10 @@ class LoanResource extends Resource
         return $schema->components([
             Section::make('Pinjaman')->columns(3)->schema([
                 TextEntry::make('borrower.nama')->label('Peminjam'),
+                TextEntry::make('borrower.nomor_anggota')->label('No. anggota')->placeholder('-'),
+                TextEntry::make('borrower.nik')
+                    ->label('NIK')
+                    ->formatStateUsing(fn (?string $state): string => Borrower::mask($state) ?? '-'),
                 TextEntry::make('borrower.nama_pt')->label('Nama PT')->placeholder('-'),
                 TextEntry::make('borrower.no_hp')->label('No HP'),
                 TextEntry::make('borrower.no_rekening')->label('No rekening')->placeholder('-'),
@@ -168,6 +189,9 @@ class LoanResource extends Resource
                         ? Rupiah::format(PenaltyCalculator::amount($record->biaya_admin, PenaltyCalculator::periods($record->jatuh_tempo, now())))
                         : '-'),
             ]),
+            Section::make('Foto')->schema([
+                ViewEntry::make('foto')->hiddenLabel()->view('filament.loan-photos'),
+            ]),
             Section::make('Riwayat pembayaran')->schema([
                 RepeatableEntry::make('payments')
                     ->hiddenLabel()
@@ -179,6 +203,9 @@ class LoanResource extends Resource
                         TextEntry::make('alasan_penyesuaian')->label('Alasan')->placeholder('-'),
                     ]),
             ]),
+            Section::make('Riwayat pinjaman peminjam (cabang ini)')->schema([
+                ViewEntry::make('riwayat')->hiddenLabel()->view('filament.borrower-history'),
+            ]),
         ]);
     }
 
@@ -187,6 +214,12 @@ class LoanResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('borrower.nama')->label('Peminjam')->searchable()->sortable(),
+                TextColumn::make('borrower.nomor_anggota')->label('No. anggota')->searchable(),
+                TextColumn::make('borrower.nik')
+                    ->label('NIK')
+                    ->formatStateUsing(fn (?string $state): string => Borrower::mask($state) ?? '-')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('branch.nama')
                     ->label('Cabang')
                     ->visible(fn (): bool => auth()->user()?->role === Role::SuperAdmin),
@@ -219,6 +252,10 @@ class LoanResource extends Resource
             ->filters([
                 SelectFilter::make('status')->options(['aktif' => 'Aktif', 'lunas' => 'Lunas']),
                 TrashedFilter::make()->visible(fn (): bool => auth()->user()?->role === Role::SuperAdmin),
+                SelectFilter::make('branch_id')
+                    ->label('Cabang')
+                    ->relationship('branch', 'nama')
+                    ->visible(fn (): bool => auth()->user()?->role === Role::SuperAdmin),
                 Filter::make('terlambat')
                     ->label('Terlambat')
                     ->toggle()

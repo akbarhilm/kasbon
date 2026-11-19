@@ -72,7 +72,7 @@ class DashboardMetricsTest extends TestCase
 
     private function borrower(Branch $branch, string $nama): Borrower
     {
-        return Borrower::create(['branch_id' => $branch->id, 'nama' => $nama, 'no_hp' => '08' . random_int(100000, 999999)]);
+        return Borrower::create(['branch_id' => $branch->id, 'nama' => $nama, 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '08' . random_int(100000, 999999)]);
     }
 
     public function test_metrics_for_active_loans_and_overdue(): void

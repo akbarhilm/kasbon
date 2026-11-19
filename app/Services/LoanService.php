@@ -30,6 +30,7 @@ final class LoanService
         int $tenorMonths,
         CarbonInterface $waktu,
         User $by,
+        array $foto = [],
     ): Loan {
         $max = (int) config('pinjaman.max_tenor_months');
 
@@ -43,7 +44,7 @@ final class LoanService
             throw ValidationException::withMessages(['persen_admin' => 'Persentase biaya admin harus 0 sampai 100.']);
         }
 
-        return DB::transaction(function () use ($borrower, $pokok, $persenAdmin, $tenorMonths, $waktu, $by) {
+        return DB::transaction(function () use ($borrower, $pokok, $persenAdmin, $tenorMonths, $waktu, $by,$foto) {
             $branch = Branch::query()->lockForUpdate()->findOrFail($borrower->branch_id);
             $borrower = Borrower::query()->lockForUpdate()->findOrFail($borrower->id);
 
@@ -54,6 +55,17 @@ final class LoanService
 
             if ($hasActive) {
                 throw ValidationException::withMessages(['borrower_id' => 'Peminjam masih memiliki pinjaman aktif.']);
+            }
+
+            // Validasi level 2 (pinjaman): NIK yang sama tidak boleh punya pinjaman aktif di cabang mana pun.
+            if (blank($borrower->nik)) {
+                throw ValidationException::withMessages(['borrower_id' => 'NIK peminjam belum diisi. Lengkapi dulu di menu Peminjam.']);
+            }
+
+            $other = app(NikGuard::class)->activeLoanFor((string) $borrower->nik);
+
+            if ($other !== null) {
+                throw ValidationException::withMessages(['borrower_id' => NikGuard::loanMessage($other)]);
             }
 
             $fee = LoanTerms::adminFee($pokok, $persenAdmin);
@@ -73,6 +85,8 @@ final class LoanService
                 'jatuh_tempo' => LoanTerms::dueDate($waktu, $tenorMonths),
                 'status' => LoanStatus::Aktif,
                 'active_borrower_id' => $borrower->id,
+                'active_nik' => $borrower->nik,
+                'foto' => $foto === [] ? null : array_values($foto),
                 'created_by' => $by->id,
             ]);
 
@@ -89,6 +103,7 @@ final class LoanService
                 'biaya_admin' => $fee,
                 'tenor_bulan' => $tenorMonths,
                 'jatuh_tempo' => $loan->jatuh_tempo->toDateString(),
+                'foto_jumlah' => count($foto),
             ], $by);
 
             return $loan;

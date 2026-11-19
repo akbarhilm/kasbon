@@ -54,7 +54,7 @@ class WithdrawalTest extends TestCase
         );
 
         // Pinjaman 5.000.000 dengan admin 10%: kas 5.000.000, administrasi 500.000, saldo akhir 5.500.000
-        $borrower = Borrower::create(['branch_id' => $this->branch->id, 'nama' => 'Budi', 'no_hp' => '0811']);
+        $borrower = Borrower::create(['branch_id' => $this->branch->id, 'nama' => 'Budi', 'nik' => sprintf('%016d', random_int(1, 9999999999999999)), 'no_hp' => '0811']);
         app(LoanService::class)->disburse($borrower, 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $this->cabang);
     }
 

@@ -35,6 +35,14 @@ class BranchResource extends Resource
     {
         return $schema->components([
             TextInput::make('kode')->required()->unique()->maxLength(20),
+            TextInput::make('kode_huruf')
+                ->label('Huruf cabang')
+                ->length(1)
+                ->regex('/^[A-Za-z]$/')
+                ->unique(ignoreRecord: true)
+                ->disabledOn('edit')
+                ->dehydrateStateUsing(fn ($state) => filled($state) ? strtoupper($state) : null)
+                ->helperText('Satu huruf A-Z untuk nomor anggota (contoh A0001). Kosongkan untuk diisi otomatis. Tidak dapat diubah setelah dibuat.'),
             TextInput::make('nama')->required()->maxLength(255),
         ]);
     }
@@ -44,6 +52,7 @@ class BranchResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('kode')->searchable()->sortable(),
+                TextColumn::make('kode_huruf')->label('Huruf')->sortable(),
                 TextColumn::make('nama')->searchable()->sortable(),
             ])
             ->defaultSort('kode')

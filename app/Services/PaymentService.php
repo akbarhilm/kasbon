@@ -70,6 +70,7 @@ final class PaymentService
                 'status' => LoanStatus::Lunas,
                 'dilunasi_pada' => $paidAt,
                 'active_borrower_id' => null,
+                'active_nik' => null,
             ]);
 
             $this->audit->record('pembayaran.dicatat', $payment, $loan->branch_id, null, null, [

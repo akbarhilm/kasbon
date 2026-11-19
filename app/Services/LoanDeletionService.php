@@ -91,6 +91,7 @@ final class LoanDeletionService
                 'deleted_by' => $by->id,
                 'alasan_hapus' => $alasan,
                 'active_borrower_id' => null, // peminjam boleh mengajukan pinjaman baru
+                'active_nik' => null,
             ])->save();
             $loan->delete();
 

@@ -7,7 +7,7 @@ use App\Services\AuditLogger;
 
 class BorrowerObserver
 {
-    private const TRACKED = ['nama', 'nama_pt', 'no_rekening', 'no_hp'];
+    private const TRACKED = ['nama', 'nama_pt', 'no_rekening', 'no_hp', 'nik'];
 
     public function __construct(private AuditLogger $audit)
     {
@@ -15,7 +15,12 @@ class BorrowerObserver
 
     public function created(Borrower $borrower): void
     {
-        $this->audit->record('peminjam.dibuat', $borrower, $borrower->branch_id, null, null, $borrower->only(self::TRACKED));
+        $data = [];
+        foreach (array_merge(self::TRACKED, ['nomor_anggota']) as $field) {
+            $data[$field] = $this->value($field, $borrower->getAttribute($field));
+        }
+
+        $this->audit->record('peminjam.dibuat', $borrower, $borrower->branch_id, null, null, $data);
     }
 
     public function updated(Borrower $borrower): void
@@ -29,10 +34,16 @@ class BorrowerObserver
         $before = [];
         $after = [];
         foreach ($fields as $field) {
-            $before[$field] = $borrower->getOriginal($field);
-            $after[$field] = $borrower->getAttribute($field);
+            $before[$field] = $this->value($field, $borrower->getOriginal($field));
+            $after[$field] = $this->value($field, $borrower->getAttribute($field));
         }
 
         $this->audit->record('peminjam.diubah', $borrower, $borrower->branch_id, null, $before, $after);
+    }
+
+    /** NIK tidak disimpan utuh di audit log (data pribadi): hanya bentuk tersamar. */
+    private function value(string $field, mixed $value): mixed
+    {
+        return $field === 'nik' ? Borrower::mask($value) : $value;
     }
 }
