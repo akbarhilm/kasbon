@@ -13,7 +13,7 @@ final class MemberNumberService
     public function preview(int $branchId): string
     {
         return DB::transaction(function () use ($branchId): string {
-            $branch = Branch::query()->lockForUpdate()->findOrFail($branchId);
+            $branch = Branch::findOrFail($branchId);
 
             if (blank($branch->kode_huruf)) {
                 throw new RuntimeException('Kode huruf cabang belum diatur.');

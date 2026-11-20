@@ -56,8 +56,61 @@ class ListLedgerEntries extends ListRecords
                     ->where('pos', LedgerPos::SaldoAwal)
                     ->exists()),
             $this->masukAction('tambah_modal', 'Tambah modal', LedgerPos::PenambahanModal),
+            $this->masukAction('bunga_bank', 'Bunga bank', LedgerPos::BungaBank),
             $this->tarikSaldoAction(),
+            $this->biayaAdminBankAction(),
         ];
+    }
+
+    /**
+     * Biaya admin transaksi bank (mis. saat cabang mentransfer ke rekening lain).
+     * Dikurangkan dari saldo kas dan tidak boleh melebihi saldo kas.
+     */
+    private function biayaAdminBankAction(): Action
+    {
+        $limit = fn (): int => app(WithdrawalService::class)
+            ->limit((int) auth()->user()->branch_id, WithdrawalService::KAS);
+
+        return Action::make('biaya_admin_bank')
+            ->label('Biaya admin bank')
+            ->color('danger')
+            ->visible(fn (): bool => auth()->user()?->role === Role::Cabang)
+            ->modalHeading('Biaya admin bank')
+            ->modalDescription('Biaya admin transaksi bank, misalnya saat cabang mentransfer ke rekening lain. Dikurangkan dari saldo kas.')
+            ->fillForm(fn (): array => ['waktu' => now()->format('Y-m-d H:i')])
+            ->schema([
+                TextInput::make('jumlah')
+                    ->numeric()
+                    ->integer()
+                    ->minValue(1)
+                    ->prefix('Rp')
+                    ->required()
+                    ->maxValue(fn (): int => max(1, $limit()))
+                    ->helperText(fn (): string => 'Maksimal ' . Rupiah::format($limit()) . ' (saldo kas).'),
+                DateTimePicker::make('waktu')->label('Tanggal dan jam')->seconds(false)->required(),
+                TextInput::make('keterangan')->maxLength(255),
+            ])
+            ->action(function (array $data, Action $action): void {
+                try {
+                    app(WithdrawalService::class)->bankFee(
+                        auth()->user(),
+                        (int) $data['jumlah'],
+                        Carbon::parse($data['waktu']),
+                        $data['keterangan'] ?? null,
+                    );
+                } catch (ValidationException|AuthorizationException $e) {
+                    $message = $e instanceof ValidationException
+                        ? (string) collect($e->errors())->flatten()->first()
+                        : $e->getMessage();
+
+                    Notification::make()->title($message)->danger()->send();
+                    $action->halt();
+
+                    return;
+                }
+
+                Notification::make()->title('Biaya admin bank tersimpan')->success()->send();
+            });
     }
 
     private function masukAction(string $name, string $label, LedgerPos $pos): Action

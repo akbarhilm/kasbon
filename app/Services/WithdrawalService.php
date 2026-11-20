@@ -15,7 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Penarikan saldo oleh cabang dari salah satu pos: saldo kas atau administrasi.
+ * Pengeluaran saldo oleh cabang:
+ *  - penarikan dari salah satu pos: saldo kas atau administrasi;
+ *  - biaya admin bank (mis. biaya transfer ke rekening lain), dikurangkan dari saldo kas.
  * Batas = seluruh saldo pos itu (tanpa batas periode), dan tidak boleh melebihi saldo akhir cabang.
  */
 final class WithdrawalService
@@ -27,7 +29,7 @@ final class WithdrawalService
     {
     }
 
-    /** Jumlah maksimal yang boleh ditarik dari pos tersebut. */
+    /** Jumlah maksimal yang boleh dikeluarkan dari pos tersebut. */
     public function limit(int $branchId, string $source): int
     {
         $total = $this->ledger->balance($branchId);
@@ -40,21 +42,49 @@ final class WithdrawalService
 
     public function withdraw(User $by, string $source, int $jumlah, CarbonInterface $waktu, ?string $keterangan = null): LedgerEntry
     {
-        if ($by->role !== Role::Cabang || ! $by->branch_id) {
-            throw new AuthorizationException('Hanya user cabang yang dapat menarik saldo.');
-        }
+        $this->assertBranchUser($by);
+
         if (! in_array($source, [self::KAS, self::ADMINISTRASI], true)) {
             throw ValidationException::withMessages(['pos' => 'Pos penarikan tidak valid.']);
         }
+
+        $pos = $source === self::ADMINISTRASI ? LedgerPos::PenarikanAdministrasi : LedgerPos::PenarikanKas;
+
+        return $this->spend($by, $source, $pos, $jumlah, $waktu, $keterangan, 'penarikan.dicatat');
+    }
+
+    /** Biaya admin bank: pengeluaran dari saldo kas, tidak boleh melebihi saldo kas. */
+    public function bankFee(User $by, int $jumlah, CarbonInterface $waktu, ?string $keterangan = null): LedgerEntry
+    {
+        $this->assertBranchUser($by);
+
+        return $this->spend($by, self::KAS, LedgerPos::BiayaAdminBank, $jumlah, $waktu, $keterangan, 'biaya_bank.dicatat');
+    }
+
+    private function assertBranchUser(User $by): void
+    {
+        if ($by->role !== Role::Cabang || ! $by->branch_id) {
+            throw new AuthorizationException('Hanya user cabang yang dapat mencatat pengeluaran saldo.');
+        }
+    }
+
+    private function spend(
+        User $by,
+        string $source,
+        LedgerPos $pos,
+        int $jumlah,
+        CarbonInterface $waktu,
+        ?string $keterangan,
+        string $auditAction,
+    ): LedgerEntry {
         if ($jumlah <= 0) {
-            throw ValidationException::withMessages(['jumlah' => 'Jumlah penarikan harus lebih dari nol.']);
+            throw ValidationException::withMessages(['jumlah' => 'Jumlah harus lebih dari nol.']);
         }
 
         $branchId = (int) $by->branch_id;
-        $pos = $source === self::ADMINISTRASI ? LedgerPos::PenarikanAdministrasi : LedgerPos::PenarikanKas;
         $label = $source === self::ADMINISTRASI ? 'saldo administrasi' : 'saldo kas';
 
-        return DB::transaction(function () use ($by, $branchId, $source, $jumlah, $waktu, $keterangan, $pos, $label): LedgerEntry {
+        return DB::transaction(function () use ($by, $branchId, $source, $pos, $jumlah, $waktu, $keterangan, $label, $auditAction): LedgerEntry {
             // Lock cabang agar pengecekan batas dan penulisan tidak saling menyalip.
             Branch::query()->lockForUpdate()->findOrFail($branchId);
 
@@ -78,7 +108,7 @@ final class WithdrawalService
                 $by->id,
             );
 
-            $this->audit->record('penarikan.dicatat', $entry, $branchId, $keterangan, null, [
+            $this->audit->record($auditAction, $entry, $branchId, $keterangan, null, [
                 'pos' => $pos->value,
                 'jumlah' => $jumlah,
                 'batas_tersedia' => $limit,

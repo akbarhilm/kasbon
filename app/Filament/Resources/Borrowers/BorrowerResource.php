@@ -49,7 +49,7 @@ class BorrowerResource extends Resource
                 ->default(fn (): string => app(MemberNumberService::class)->preview((int) auth()->user()->branch_id))
                 ->disabled()
                 ->dehydrated(false)
-               ->helperText('Dibuat otomatis berdasarkan cabang Anda.'),
+               ->helperText('Nomor final ditetapkan saat disimpan.'),
             TextInput::make('nik')
                 ->label('NIK')
                 ->required()

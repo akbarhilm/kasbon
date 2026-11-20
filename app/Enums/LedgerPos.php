@@ -13,6 +13,8 @@ enum LedgerPos: string
     case Administrasi = 'administrasi';
     case PelunasanPokok = 'pelunasan_pokok';
     case Denda = 'denda';
+    case BungaBank = 'bunga_bank'; // masuk: bunga simpanan/rekening bank cabang
+    case BiayaAdminBank = 'biaya_admin_bank'; // keluar: biaya admin transaksi bank
     case Koreksi = 'koreksi';
     case KoreksiAdministrasi = 'koreksi_administrasi';
 
@@ -28,6 +30,8 @@ enum LedgerPos: string
             self::Administrasi => 'Administrasi',
             self::PelunasanPokok => 'Pelunasan pokok',
             self::Denda => 'Denda',
+            self::BungaBank => 'Bunga bank',
+            self::BiayaAdminBank => 'Biaya admin bank',
             self::Koreksi => 'Koreksi',
             self::KoreksiAdministrasi => 'Koreksi administrasi',
         };
