@@ -17,7 +17,7 @@ final class PenaltyCalculator
         $tz = config('pinjaman.timezone');
         $step = max(1, (int) config('pinjaman.penalty_period_months', 1));
 
-        $due = CarbonImmutable::createFromFormat('Y-m-d', $dueDate->format('Y-m-d'), $tz)->startOfDay();
+        $due = CarbonImmutable::createFromFormat('Y-m-d', $dueDate->format('Y-m-d'), $tz)->addDays(3)->startOfDay();
         $paid = CarbonImmutable::instance($paidAt)->setTimezone($tz)->startOfDay();
 
         $k = 0;
