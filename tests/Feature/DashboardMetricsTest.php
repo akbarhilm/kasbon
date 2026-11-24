@@ -81,8 +81,8 @@ class DashboardMetricsTest extends TestCase
         $loans = app(LoanService::class);
         $metrics = app(DashboardMetrics::class);
 
-        $a = $loans->disburse($this->borrower($branch, 'Budi'), 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $user);
-        $loans->disburse($this->borrower($branch, 'Siti'), 3_000_000, 10, 3, $this->at('2026-06-01 11:00'), $user);
+        $a = $loans->disburse($this->borrower($branch, 'Budi'), 5_000_000, 10, 1, $this->at('2026-06-01 10:00'), $user);
+        $loans->disburse($this->borrower($branch, 'Siti'), 3_000_000, 10, 1, $this->at('2026-06-01 11:00'), $user);
 
         app(LedgerService::class)->post(
             $branch->id, LedgerPos::PenambahanModal, Arah::Masuk, 2_000_000,
@@ -95,18 +95,18 @@ class DashboardMetricsTest extends TestCase
         $this->assertSame(2, $metrics->jumlahPinjamanAktif($branch->id));
 
         // Jatuh tempo kedua pinjaman: 1 Sep 2026
-        $this->assertSame(['jumlah' => 0, 'count' => 0], $metrics->bakiMacet($branch->id, $this->at('2026-09-01 12:00')));
-        $this->assertSame(['jumlah' => 8_000_000, 'count' => 2], $metrics->bakiMacet($branch->id, $this->at('2026-09-02 08:00')));
+        $this->assertSame(['jumlah' => 0, 'count' => 0], $metrics->bakiMacet($branch->id, $this->at('2026-07-01 12:00')));
+        $this->assertSame(['jumlah' => 8_000_000, 'count' => 2], $metrics->bakiMacet($branch->id, $this->at('2026-07-02 08:00')));
 
         $this->assertSame(800_000, $metrics->pendapatanAdministrasi($branch->id, $this->at('2026-06-01 00:00'), $this->at('2026-06-30 23:59')));
         $this->assertSame(0, $metrics->pendapatanAdministrasi($branch->id, $this->at('2026-07-01 00:00'), $this->at('2026-07-31 23:59')));
         $this->assertSame(2_000_000, $metrics->penambahanModal($branch->id, $this->at('2026-06-01 00:00'), $this->at('2026-06-30 23:59')));
 
         // Pelunasan mengurangi baki pinjaman dan baki macet
-        app(PaymentService::class)->settle($a, $this->at('2026-09-02 10:00'), null, null, $user);
+        app(PaymentService::class)->settle($a, $this->at('2026-07-02 10:00'), $user);
 
         $this->assertSame(3_000_000, $metrics->bakiPinjaman($branch->id));
-        $this->assertSame(['jumlah' => 3_000_000, 'count' => 1], $metrics->bakiMacet($branch->id, $this->at('2026-09-02 12:00')));
+        $this->assertSame(['jumlah' => 3_000_000, 'count' => 1], $metrics->bakiMacet($branch->id, $this->at('2026-07-02 12:00')));
     }
 
     public function test_metrics_are_isolated_per_branch(): void
@@ -116,8 +116,8 @@ class DashboardMetricsTest extends TestCase
         $loans = app(LoanService::class);
         $metrics = app(DashboardMetrics::class);
 
-        $loans->disburse($this->borrower($b1, 'Budi'), 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $u1);
-        $loans->disburse($this->borrower($b2, 'Ani'), 7_000_000, 10, 3, $this->at('2026-06-01 10:00'), $u2);
+        $loans->disburse($this->borrower($b1, 'Budi'), 5_000_000, 10, 1, $this->at('2026-06-01 10:00'), $u1);
+        $loans->disburse($this->borrower($b2, 'Ani'), 7_000_000, 10, 1, $this->at('2026-06-01 10:00'), $u2);
 
         $this->assertSame(5_000_000, $metrics->bakiPinjaman($b1->id));
         $this->assertSame(7_000_000, $metrics->bakiPinjaman($b2->id));

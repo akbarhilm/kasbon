@@ -82,11 +82,11 @@ class IntegrityCheckerTest extends TestCase
         $loans = app(LoanService::class);
         $payments = app(PaymentService::class);
 
-        $l1 = $loans->disburse($this->borrower('Budi'), 3_000_000, 10, 3, $this->at('2026-06-01 10:00'), $this->cabang);
-        $loans->disburse($this->borrower('Siti'), 2_000_000, 10, 3, $this->at('2026-06-01 11:00'), $this->cabang);
-        $l3 = $loans->disburse($this->borrower('Agus'), 1_000_000, 10, 2, $this->at('2026-06-01 12:00'), $this->cabang);
+        $l1 = $loans->disburse($this->borrower('Budi'), 3_000_000, 10, 1, $this->at('2026-06-01 10:00'), $this->cabang);
+        $loans->disburse($this->borrower('Siti'), 2_000_000, 10, 1, $this->at('2026-06-01 11:00'), $this->cabang);
+        $l3 = $loans->disburse($this->borrower('Agus'), 1_000_000, 10, 1, $this->at('2026-06-01 12:00'), $this->cabang);
 
-        $payments->settle($l1, $this->at('2026-09-10 10:00'), null, null, $this->cabang);
+        $payments->settle($l1, $this->at('2026-07-10 10:00'), $this->cabang);
         app(LoanDeletionService::class)->delete($l3, 'Salah input pinjaman', $this->sa);
     }
 
@@ -148,7 +148,7 @@ class IntegrityCheckerTest extends TestCase
     {
         $this->seedHealthyData();
 
-        DB::table('payments')->delete();
+        DB::table('loan_installments')->update(['payment_id' => null]);
 
         $this->assertContains('PEMBAYARAN_JUMLAH', $this->errorCodes());
     }

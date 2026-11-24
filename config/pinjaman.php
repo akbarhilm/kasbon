@@ -10,6 +10,10 @@ return [
     // Biaya admin bawaan (persen dari pokok), bisa diubah user per pinjaman.
     'default_admin_percent' => 10,
 
+    // Masa tenggang denda (hari). Jatuh tempo TIDAK berubah; denda baru berlaku setelah jatuh tempo + masa tenggang.
+    // Contoh 3 hari: jatuh tempo tgl 17, denda mulai berlaku tgl 21. Berlaku juga untuk periode denda berikutnya.
+    'penalty_grace_days' => (int) env('DENDA_MASA_TENGGANG_HARI', 3),
+
     // Panjang satu periode denda (bulan). Asumsi: 1 bulan. Konfirmasi ke client.
     'penalty_period_months' => 1,
 

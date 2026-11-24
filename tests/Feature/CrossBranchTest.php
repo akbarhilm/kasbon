@@ -92,12 +92,12 @@ class CrossBranchTest extends TestCase
 
     private function disburse(Borrower $borrower, User $by, array $foto = []): Loan
     {
-        return app(LoanService::class)->disburse($borrower, 1_000_000, 10, 3, $this->at('2026-06-01 10:00'), $by, $foto);
+        return app(LoanService::class)->disburse($borrower, 1_000_000, 10, 1, $this->at('2026-06-01 10:00'), $by, $foto);
     }
 
     private function settle(Loan $loan, User $by): void
     {
-        app(PaymentService::class)->settle($loan, $this->at('2026-08-01 10:00'), null, null, $by);
+        app(PaymentService::class)->settle($loan, $this->at('2026-08-01 10:00'), $by);
     }
 
     public function test_member_numbers_use_branch_letter_and_sequence(): void

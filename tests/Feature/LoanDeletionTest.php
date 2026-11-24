@@ -87,7 +87,7 @@ class LoanDeletionTest extends TestCase
 
     private function disburse(): Loan
     {
-        return app(LoanService::class)->disburse($this->borrower, 5_000_000, 10, 3, $this->at('2026-06-01 10:00'), $this->cabang);
+        return app(LoanService::class)->disburse($this->borrower, 5_000_000, 10, 1, $this->at('2026-06-01 10:00'), $this->cabang);
     }
 
     public function test_deleting_active_loan_reverses_ledger_and_frees_borrower(): void
@@ -122,7 +122,7 @@ class LoanDeletionTest extends TestCase
     public function test_deleting_settled_loan_reverses_all_entries_including_penalty(): void
     {
         $loan = $this->disburse();
-        app(PaymentService::class)->settle($loan, $this->at('2026-09-10 10:00'), null, null, $this->cabang);
+        app(PaymentService::class)->settle($loan, $this->at('2026-07-10 10:00'), $this->cabang);
         $this->assertSame(11_000_000, $this->balance()); // pokok kembali + admin 500.000 + denda 500.000
 
         $impact = app(LoanDeletionService::class)->impact($loan);
@@ -176,20 +176,14 @@ class LoanDeletionTest extends TestCase
         app(LoanDeletionService::class)->delete($loan, 'Salah input pinjaman', $this->sa);
     }
 
-    public function test_disbursement_and_penalty_adjustment_are_audited(): void
+    public function test_disbursement_and_payment_are_audited(): void
     {
         $loan = $this->disburse();
         $this->assertSame(1, AuditLog::where('aksi', 'pinjaman.dibuat')->count());
 
-        app(PaymentService::class)->settle($loan, $this->at('2026-09-10 10:00'), 0, 'Dispensasi pimpinan', $this->cabang);
+        app(PaymentService::class)->settle($loan, $this->at('2026-07-10 10:00'), $this->cabang);
 
         $this->assertSame(1, AuditLog::where('aksi', 'pembayaran.dicatat')->count());
-
-        $log = AuditLog::where('aksi', 'denda.disesuaikan')->first();
-        $this->assertNotNull($log);
-        $this->assertSame('Dispensasi pimpinan', $log->keterangan);
-        $this->assertSame(500_000, $log->data_sebelum['denda']);
-        $this->assertSame(0, $log->data_sesudah['denda']);
     }
 
     public function test_borrower_contact_changes_are_audited(): void

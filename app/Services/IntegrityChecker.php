@@ -6,12 +6,14 @@ use App\Enums\LedgerPos;
 use App\Enums\LoanStatus;
 use App\Models\Branch;
 use App\Models\LedgerEntry;
+use App\Models\LedgerVoid;
 use App\Models\Loan;
+use App\Models\LoanInstallment;
 use App\Models\Payment;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Memeriksa konsistensi data: pinjaman, pembayaran, dan buku kas harus saling cocok.
+ * Memeriksa konsistensi data: pinjaman, cicilan, pembayaran, dan buku kas harus saling cocok.
  * level error = data tidak konsisten; warning = patut diperhatikan (mis. saldo negatif).
  */
 final class IntegrityChecker
@@ -31,6 +33,7 @@ final class IntegrityChecker
         $maxTenor = (int) config('pinjaman.max_tenor_months');
         $ledger = $this->ledgerByLoan();
         $payments = Payment::query()->get()->groupBy('loan_id');
+        $installments = LoanInstallment::query()->orderBy('no')->get()->groupBy('loan_id');
 
         foreach (Loan::withTrashed()->with('borrower')->orderBy('id')->lazy() as $loan) {
             $obj = "Pinjaman #{$loan->id}";
@@ -43,6 +46,7 @@ final class IntegrityChecker
             if (! $isActive && $loan->active_borrower_id !== null) {
                 $add('error', 'FLAG_TIDAK_AKTIF', $obj, 'Pinjaman tidak aktif tetapi penanda pinjaman aktif masih terisi.');
             }
+
             $nik = $loan->borrower?->nik;
             if ($isActive && $loan->active_nik !== $nik) {
                 $add('error', 'FLAG_NIK', $obj, 'Penanda NIK pinjaman aktif tidak sama dengan NIK peminjam.');
@@ -54,12 +58,6 @@ final class IntegrityChecker
             if ($loan->tenor_bulan < 1 || $loan->tenor_bulan > $maxTenor) {
                 $add('error', 'TENOR', $obj, "Tenor {$loan->tenor_bulan} bulan di luar batas 1 sampai {$maxTenor}.");
             }
-
-            $expectedDue = LoanTerms::dueDate($loan->dicairkan_pada, (int) $loan->tenor_bulan)->toDateString();
-            if ($loan->jatuh_tempo->toDateString() !== $expectedDue) {
-                $add('error', 'JATUH_TEMPO', $obj, "Jatuh tempo {$loan->jatuh_tempo->toDateString()} tidak sama dengan pencairan + tenor ({$expectedDue}).");
-            }
-
             if ((int) $loan->biaya_admin !== LoanTerms::adminFee($pokok, $loan->persen_admin)) {
                 $add('error', 'BIAYA_ADMIN', $obj, 'Biaya admin tidak sama dengan persentase x pokok.');
             }
@@ -80,6 +78,87 @@ final class IntegrityChecker
                 continue;
             }
 
+            // ---- Cicilan ----
+            $rows = $installments[$loan->id] ?? collect();
+            $loanPayments = $payments[$loan->id] ?? collect();
+            $paid = $rows->filter(fn (LoanInstallment $i): bool => $i->payment_id !== null);
+            $unpaid = $rows->filter(fn (LoanInstallment $i): bool => $i->payment_id === null);
+
+            if ($rows->isEmpty()) {
+                $add('error', 'CICILAN_KOSONG', $obj, 'Pinjaman tidak memiliki cicilan.');
+            } else {
+                if ((int) $rows->sum('pokok') !== $pokok) {
+                    $add('error', 'CICILAN_JUMLAH', $obj, 'Total pokok cicilan tidak sama dengan pokok pinjaman.');
+                }
+                if ($rows->pluck('no')->values()->all() !== range(1, $rows->count())) {
+                    $add('error', 'CICILAN_URUTAN', $obj, 'Nomor cicilan tidak berurutan.');
+                }
+
+                $dates = $rows->map(fn (LoanInstallment $i): string => $i->jatuh_tempo->toDateString())->values()->all();
+                $sorted = $dates;
+                sort($sorted);
+                if ($dates !== $sorted) {
+                    $add('error', 'CICILAN_TANGGAL', $obj, 'Jatuh tempo cicilan tidak menaik.');
+                }
+
+                if ($rows->count() === (int) $loan->tenor_bulan) {
+                    foreach ($rows as $row) {
+                        $expected = LoanTerms::dueDate($loan->dicairkan_pada, (int) $row->no)->toDateString();
+                        if ($row->jatuh_tempo->toDateString() !== $expected) {
+                            $add('error', 'CICILAN_JATUH_TEMPO', $obj, "Jatuh tempo cicilan ke-{$row->no} ({$row->jatuh_tempo->toDateString()}) tidak sama dengan pencairan + {$row->no} bulan ({$expected}).");
+                        }
+                    }
+                }
+
+                // Cicilan yang sudah dibayar harus berupa awalan (tidak ada yang dilewati).
+                $firstUnpaidNo = $unpaid->min('no');
+                if ($firstUnpaidNo !== null && $paid->contains(fn (LoanInstallment $i): bool => $i->no > $firstUnpaidNo)) {
+                    $add('error', 'CICILAN_URUTAN_BAYAR', $obj, 'Ada cicilan yang dibayar mendahului cicilan sebelumnya.');
+                }
+
+                if ((int) $loan->sisa_pokok !== (int) $unpaid->sum('pokok')) {
+                    $add('error', 'SISA_POKOK', $obj, 'Sisa pokok pinjaman tidak sama dengan total cicilan yang belum dibayar.');
+                }
+
+                $expectedDue = ($unpaid->first() ?? $rows->last())->jatuh_tempo->toDateString();
+                if ($loan->jatuh_tempo->toDateString() !== $expectedDue) {
+                    $add('error', 'JATUH_TEMPO', $obj, "Jatuh tempo {$loan->jatuh_tempo->toDateString()} tidak sama dengan jatuh tempo cicilan berikutnya ({$expectedDue}).");
+                }
+
+                if ($unpaid->isEmpty() && $loan->status !== LoanStatus::Lunas) {
+                    $add('error', 'STATUS_CICILAN', $obj, 'Semua cicilan sudah dibayar tetapi pinjaman belum berstatus lunas.');
+                }
+                if ($unpaid->isNotEmpty() && $loan->status === LoanStatus::Lunas) {
+                    $add('error', 'STATUS_CICILAN', $obj, 'Pinjaman berstatus lunas tetapi masih ada cicilan yang belum dibayar.');
+                }
+            }
+
+            if ($loan->status === LoanStatus::Lunas && $loan->dilunasi_pada === null) {
+                $add('error', 'LUNAS_TANPA_TANGGAL', $obj, 'Pinjaman lunas tetapi tanggal pelunasan kosong.');
+            }
+
+            // ---- Pembayaran ----
+            if ($loanPayments->count() !== $paid->count()) {
+                $add('error', 'PEMBAYARAN_JUMLAH', $obj, "Jumlah pembayaran ({$loanPayments->count()}) tidak sama dengan jumlah cicilan yang dibayar ({$paid->count()}).");
+            }
+
+            foreach ($paid as $row) {
+                $payment = $loanPayments->firstWhere('id', $row->payment_id);
+
+                if ($payment === null) {
+                    $add('error', 'PEMBAYARAN_HILANG', $obj, "Cicilan ke-{$row->no} tertaut ke pembayaran yang tidak ditemukan.");
+                } elseif ((int) $payment->pokok !== (int) $row->pokok) {
+                    $add('error', 'PEMBAYARAN_POKOK', $obj, "Pokok pembayaran cicilan ke-{$row->no} tidak sama dengan pokok cicilan.");
+                }
+            }
+
+            foreach ($loanPayments as $payment) {
+                if ((int) $payment->denda_final > (int) $payment->denda_sistem) {
+                    $add('error', 'DENDA_MELEBIHI_SISTEM', $obj, 'Denda pembayaran lebih besar daripada hitungan sistem.');
+                }
+            }
+
+            // ---- Buku kas ----
             if ($out(LedgerPos::Pinjaman) !== $pokok) {
                 $add('error', 'PINJAMAN_KAS', $obj, 'Entri pencairan di buku kas tidak sama dengan pokok pinjaman.');
             }
@@ -89,31 +168,13 @@ final class IntegrityChecker
             if (isset($byPos[LedgerPos::Koreksi->value]) || isset($byPos[LedgerPos::KoreksiAdministrasi->value])) {
                 $add('error', 'KOREKSI_TANPA_HAPUS', $obj, 'Ada entri koreksi pada pinjaman yang tidak dihapus.');
             }
+            if ($in(LedgerPos::PelunasanPokok) !== (int) $loanPayments->sum('pokok')) {
+                $add('error', 'PELUNASAN_KAS', $obj, 'Entri pembayaran pokok di buku kas tidak sama dengan total pokok pembayaran.');
+            }
 
-            $loanPayments = $payments[$loan->id] ?? collect();
-
-            if ($loan->status === LoanStatus::Lunas) {
-                if ($loan->dilunasi_pada === null) {
-                    $add('error', 'LUNAS_TANPA_TANGGAL', $obj, 'Pinjaman lunas tetapi tanggal pelunasan kosong.');
-                }
-
-                if ($loanPayments->count() !== 1) {
-                    $add('error', 'PEMBAYARAN_JUMLAH', $obj, 'Pinjaman lunas harus memiliki tepat 1 pembayaran, ditemukan ' . $loanPayments->count() . '.');
-                } else {
-                    $payment = $loanPayments->first();
-
-                    if ((int) $payment->pokok !== $pokok) {
-                        $add('error', 'PEMBAYARAN_POKOK', $obj, 'Pokok pembayaran tidak sama dengan pokok pinjaman.');
-                    }
-                    if ($in(LedgerPos::PelunasanPokok) !== $pokok) {
-                        $add('error', 'PELUNASAN_KAS', $obj, 'Entri pelunasan pokok di buku kas tidak sama dengan pokok pinjaman.');
-                    }
-                    if ($in(LedgerPos::Denda) !== (int) $payment->denda_final) {
-                        $add('error', 'DENDA_KAS', $obj, 'Entri denda di buku kas tidak sama dengan denda pembayaran.');
-                    }
-                }
-            } elseif ($loanPayments->isNotEmpty() || $in(LedgerPos::PelunasanPokok) > 0 || $in(LedgerPos::Denda) > 0) {
-                $add('error', 'AKTIF_ADA_PEMBAYARAN', $obj, 'Pinjaman aktif tetapi sudah memiliki pembayaran atau entri pelunasan.');
+            $dendaKas = $in(LedgerPos::Denda) + $in(LedgerPos::KoreksiDenda) - $out(LedgerPos::KoreksiDenda);
+            if ($dendaKas !== (int) $loanPayments->sum('denda_final')) {
+                $add('error', 'DENDA_KAS', $obj, 'Entri denda di buku kas tidak sama dengan total denda pembayaran.');
             }
         }
 
@@ -139,6 +200,20 @@ final class IntegrityChecker
 
         foreach ($duplicateNik as $nik => $jumlah) {
             $add('error', 'PINJAMAN_GANDA_NIK', 'NIK ' . \App\Models\Borrower::mask((string) $nik), "Memiliki {$jumlah} pinjaman aktif di seluruh cabang.");
+        }
+
+        foreach (LedgerVoid::query()->with(['entry', 'reversal'])->get() as $void) {
+            $obj = "Pembatalan entri #{$void->ledger_entry_id}";
+            $entry = $void->entry;
+            $reversal = $void->reversal;
+
+            if ($entry === null || $reversal === null) {
+                $add('error', 'VOID_ENTRI_HILANG', $obj, 'Entri asli atau entri koreksi pembatalan tidak ditemukan.');
+            } elseif ((int) $entry->jumlah !== (int) $reversal->jumlah
+                || $entry->arah === $reversal->arah
+                || (int) $entry->branch_id !== (int) $reversal->branch_id) {
+                $add('error', 'VOID_TIDAK_SEIMBANG', $obj, 'Entri koreksi tidak membalik entri asli (jumlah, arah, atau cabang berbeda).');
+            }
         }
 
         $invalid = LedgerEntry::query()->where('jumlah', '<=', 0)->count();

@@ -7,6 +7,7 @@ use App\Enums\LedgerPos;
 use App\Enums\LoanStatus;
 use App\Models\LedgerEntry;
 use App\Models\Loan;
+use App\Models\ModalDisetor;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -27,7 +28,7 @@ final class DashboardMetrics
     /** Baki pinjaman = total pokok pinjaman aktif (belum lunas). */
     public function bakiPinjaman(int $branchId): int
     {
-        return (int) $this->activeLoans($branchId)->sum('pokok');
+        return (int) $this->activeLoans($branchId)->sum('sisa_pokok');
     }
 
     public function jumlahPinjamanAktif(int $branchId): int
@@ -46,7 +47,7 @@ final class DashboardMetrics
         $query = $this->activeLoans($branchId)->whereDate('jatuh_tempo', '<', $date);
 
         return [
-            'jumlah' => (int) (clone $query)->sum('pokok'),
+            'jumlah' => (int) (clone $query)->sum('sisa_pokok'),
             'count' => (clone $query)->count(),
         ];
     }
@@ -59,6 +60,12 @@ final class DashboardMetrics
     public function penambahanModal(int $branchId, CarbonInterface $from, CarbonInterface $to): int
     {
         return $this->ledgerSum($branchId, LedgerPos::PenambahanModal, $from, $to);
+    }
+
+    /** Total modal yang dicatat super admin sebagai disetor ke cabang (pengingat, tidak memengaruhi buku kas). */
+    public function modalDisetor(int $branchId): int
+    {
+        return (int) ModalDisetor::query()->where('branch_id', $branchId)->sum('jumlah');
     }
 
     /** Saldo kas = saldo akhir dikurangi saldo administrasi. */
@@ -79,6 +86,7 @@ final class DashboardMetrics
             ->where('branch_id', $branchId)
             ->where('pos', LedgerPos::PenarikanAdministrasi)
             ->where('arah', Arah::Keluar)
+            ->whereDoesntHave('void')
             ->whereBetween('waktu', [$from, $to])
             ->sum('jumlah');
     }
@@ -96,6 +104,9 @@ final class DashboardMetrics
             ->where('branch_id', $branchId)
             ->where('pos', $pos)
             ->where('arah', Arah::Masuk)
+            ->whereDoesntHave('void') // entri yang dibatalkan super admin tidak dihitung
+            // entri milik pinjaman yang dihapus (mis. administrasi) tidak dihitung
+            ->where(fn ($q) => $q->whereNull('loan_id')->orWhereNotIn('loan_id', Loan::onlyTrashed()->select('id')))
             ->whereBetween('waktu', [$from, $to])
             ->sum('jumlah');
     }

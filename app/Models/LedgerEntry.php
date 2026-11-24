@@ -6,6 +6,7 @@ use App\Enums\Arah;
 use App\Enums\LedgerPos;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use LogicException;
 
 /**
@@ -45,5 +46,11 @@ class LedgerEntry extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    /** Ada jika entri ini sudah dibatalkan oleh super admin. */
+    public function void(): HasOne
+    {
+        return $this->hasOne(LedgerVoid::class, 'ledger_entry_id');
     }
 }

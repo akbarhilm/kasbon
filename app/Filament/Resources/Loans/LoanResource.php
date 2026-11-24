@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Loans;
 
 use App\Enums\LoanStatus;
 use App\Enums\Role;
+use App\Filament\Actions\AdjustPenaltyAction;
 use App\Filament\Actions\DeleteLoanAction;
 use App\Filament\Actions\LunasiAction;
 use App\Filament\Concerns\ScopesToBranch;
@@ -31,6 +32,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Support\RawJs;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -99,6 +101,8 @@ class LoanResource extends Resource
                 ->maxLength(50),
             TextInput::make('pokok')
                 ->label('Jumlah pinjaman')
+                ->mask(RawJs::make("\$money(\$input, '.', ',', 0)"))
+                ->stripCharacters(',')
                 ->numeric()
                 ->integer()
                 ->minValue(1)
@@ -107,6 +111,8 @@ class LoanResource extends Resource
                 ->live(onBlur: true),
             TextInput::make('persen_admin')
                 ->label('Biaya admin')
+                ->mask(RawJs::make('$money($input)'))
+                ->stripCharacters(',')
                 ->numeric()
                 ->minValue(0)
                 ->maxValue(100)
@@ -153,11 +159,15 @@ class LoanResource extends Resource
                     }
 
                     $fee = LoanTerms::adminFee($pokok, (float) $get('persen_admin'));
-                    $due = LoanTerms::dueDate(Carbon::parse($at), $tenor)->translatedFormat('d M Y');
+                    $first = LoanTerms::dueDate(Carbon::parse($at), 1)->translatedFormat('d M Y');
+                    $last = LoanTerms::dueDate(Carbon::parse($at), $tenor)->translatedFormat('d M Y');
+                    $cicilan = intdiv($pokok, $tenor);
 
                     return 'Biaya admin ' . Rupiah::format($fee)
                         . ' | Diterima peminjam ' . Rupiah::format($pokok - $fee)
-                        . ' | Jatuh tempo ' . $due;
+                        . ($tenor > 1
+                            ? ' | Cicilan ' . $tenor . ' bulan: ' . Rupiah::format($cicilan) . ' per bulan, jatuh tempo pertama ' . $first . ', terakhir ' . $last
+                            : ' | Jatuh tempo ' . $last);
                 }),
         ]);
     }
@@ -178,6 +188,7 @@ class LoanResource extends Resource
                 TextEntry::make('tenor_bulan')->label('Tenor')->suffix(' bulan'),
                 TextEntry::make('jatuh_tempo')->label('Jatuh tempo')->date('d M Y'),
                 TextEntry::make('pokok')->label('Pokok')->formatStateUsing(fn ($state) => Rupiah::format($state)),
+                TextEntry::make('sisa_pokok')->label('Sisa pokok')->formatStateUsing(fn ($state) => Rupiah::format($state)),
                 TextEntry::make('biaya_admin')->label('Biaya admin')->formatStateUsing(fn ($state) => Rupiah::format($state)),
                 TextEntry::make('status')
                     ->badge()
@@ -188,6 +199,17 @@ class LoanResource extends Resource
                     ->state(fn (Loan $record): string => $record->status === LoanStatus::Aktif
                         ? Rupiah::format(PenaltyCalculator::amount($record->biaya_admin, PenaltyCalculator::periods($record->jatuh_tempo, now())))
                         : '-'),
+            ]),
+            Section::make('Cicilan')->schema([
+                RepeatableEntry::make('installments')
+                    ->hiddenLabel()
+                    ->columns(4)
+                    ->schema([
+                        TextEntry::make('no')->label('Cicilan ke'),
+                        TextEntry::make('jatuh_tempo')->label('Jatuh tempo')->date('d M Y'),
+                        TextEntry::make('pokok')->formatStateUsing(fn ($state) => Rupiah::format($state)),
+                        TextEntry::make('payment.dibayar_pada')->label('Dibayar')->dateTime('d M Y H:i')->placeholder('Belum dibayar'),
+                    ]),
             ]),
             Section::make('Foto')->schema([
                 ViewEntry::make('foto')->hiddenLabel()->view('filament.loan-photos'),
@@ -237,6 +259,10 @@ class LoanResource extends Resource
                     ->label('Pokok')
                     ->formatStateUsing(fn ($state) => Rupiah::format($state))
                     ->alignEnd(),
+                TextColumn::make('sisa_pokok')
+                    ->label('Sisa pokok')
+                    ->formatStateUsing(fn ($state) => Rupiah::format($state))
+                    ->alignEnd(),
                 TextColumn::make('hari_terlambat')
                     ->label('Terlambat')
                     ->state(fn (Loan $record): int => static::daysLate($record))
@@ -279,6 +305,7 @@ class LoanResource extends Resource
             ->recordActions([
                 ViewAction::make(),
                 LunasiAction::make(),
+                AdjustPenaltyAction::make(),
                 DeleteLoanAction::make(),
             ]);
     }

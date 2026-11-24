@@ -8,6 +8,7 @@ use App\Enums\LoanStatus;
 use App\Models\Borrower;
 use App\Models\Branch;
 use App\Models\Loan;
+use App\Models\LoanInstallment;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -82,13 +83,26 @@ final class LoanService
                 'biaya_admin' => $fee,
                 'dicairkan_pada' => $waktu,
                 'tenor_bulan' => $tenorMonths,
-                'jatuh_tempo' => LoanTerms::dueDate($waktu, $tenorMonths),
+                'jatuh_tempo' => LoanTerms::dueDate($waktu, 1), // jatuh tempo cicilan pertama
+                'sisa_pokok' => $pokok,
                 'status' => LoanStatus::Aktif,
                 'active_borrower_id' => $borrower->id,
                 'active_nik' => $borrower->nik,
                 'foto' => $foto === [] ? null : array_values($foto),
                 'created_by' => $by->id,
             ]);
+
+            // Tenor 1 bulan = 1 pembayaran; tenor 2 dan 3 bulan = cicilan pokok per bulan (sisa pembagian di cicilan terakhir).
+            $perBulan = intdiv($pokok, $tenorMonths);
+
+            for ($no = 1; $no <= $tenorMonths; $no++) {
+                LoanInstallment::create([
+                    'loan_id' => $loan->id,
+                    'no' => $no,
+                    'jatuh_tempo' => LoanTerms::dueDate($waktu, $no),
+                    'pokok' => $no === $tenorMonths ? $pokok - $perBulan * ($tenorMonths - 1) : $perBulan,
+                ]);
+            }
 
             $this->ledger->post($branch->id, LedgerPos::Pinjaman, Arah::Keluar, $pokok, $waktu, $loan->id, null, 'Pencairan pinjaman', $by->id);
 

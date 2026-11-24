@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\Role;
 use App\Filament\Widgets\Concerns\ResolvesBranch;
 use App\Services\DashboardMetrics;
 use App\Support\Rupiah;
@@ -29,21 +30,29 @@ class BranchStatsOverview extends StatsOverviewWidget
         $ditarik = $metrics->penarikanAdministrasi($branch, $from, $to);
         $macet = $metrics->bakiMacet($branch);
 
-        return [
+        $stats = [
             Stat::make('Saldo akhir', Rupiah::format($metrics->saldo($branch)))
                 ->description('Kas ' . Rupiah::format($kas) . ' | Administrasi ' . Rupiah::format($administrasi)),
             Stat::make('Saldo kas', Rupiah::format($kas)),
             Stat::make('Saldo administrasi', Rupiah::format($administrasi))
                 ->description('belum ditarik'),
             Stat::make('Baki pinjaman', Rupiah::format($metrics->bakiPinjaman($branch)))
-                ->description($metrics->jumlahPinjamanAktif($branch) . ' pinjaman aktif'),
+                ->description($metrics->jumlahPinjamanAktif($branch) . ' pinjaman aktif (sisa pokok)'),
             Stat::make('Pendapatan administrasi', Rupiah::format($metrics->pendapatanAdministrasi($branch, $from, $to)))
                 ->description($periode . ' | ditarik ' . Rupiah::format($ditarik)),
             Stat::make('Penambahan modal', Rupiah::format($metrics->penambahanModal($branch, $from, $to)))
                 ->description($periode),
             Stat::make('Baki macet', Rupiah::format($macet['jumlah']))
-                ->description($macet['count'] . ' pinjaman belum bayar')
+                ->description($macet['count'] . ' pinjaman punya cicilan lewat jatuh tempo')
                 ->color($macet['count'] > 0 ? 'danger' : 'success'),
         ];
+
+        // Catatan pengingat super admin; tidak tampil untuk user cabang.
+        if (auth()->user()?->role === Role::SuperAdmin) {
+            $stats[] = Stat::make('Modal disetor (catatan SA)', Rupiah::format($metrics->modalDisetor($branch)))
+                ->description('pengingat; tidak memengaruhi buku kas');
+        }
+
+        return $stats;
     }
 }

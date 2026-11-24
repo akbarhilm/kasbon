@@ -5,6 +5,7 @@ namespace App\Filament\Resources\LedgerEntries;
 use App\Enums\Arah;
 use App\Enums\LedgerPos;
 use App\Enums\Role;
+use App\Filament\Actions\VoidLedgerEntryAction;
 use App\Filament\Concerns\ScopesToBranch;
 use App\Filament\Resources\LedgerEntries\Pages\ListLedgerEntries;
 use App\Models\LedgerEntry;
@@ -64,13 +65,24 @@ class LedgerEntryResource extends Resource
                     ->state(fn (LedgerEntry $record): ?string => $record->arah === Arah::Keluar ? Rupiah::format($record->jumlah) : null)
                     ->alignEnd(),
                 TextColumn::make('keterangan')->searchable(),
+                TextColumn::make('status_batal')
+                    ->label('Status')
+                    ->state(fn (LedgerEntry $record): ?string => $record->void ? 'Dibatalkan' : null)
+                    ->badge()
+                    ->color('danger')
+                    ->placeholder(''),
             ])
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('void'))
             ->defaultSort('waktu', 'desc')
             ->filters([
                 SelectFilter::make('branch_id')
                     ->label('Cabang')
                     ->relationship('branch', 'nama')
                     ->visible(fn (): bool => auth()->user()?->role === Role::SuperAdmin),
+                Filter::make('dibatalkan')
+                    ->label('Dibatalkan')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas('void')),
                 SelectFilter::make('pos')->options(
                     collect(LedgerPos::cases())->mapWithKeys(fn (LedgerPos $p): array => [$p->value => $p->label()])->all(),
                 ),
@@ -82,7 +94,8 @@ class LedgerEntryResource extends Resource
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['dari'] ?? null, fn (Builder $q, $d) => $q->whereDate('waktu', '>=', $d))
                         ->when($data['sampai'] ?? null, fn (Builder $q, $d) => $q->whereDate('waktu', '<=', $d))),
-            ]);
+            ])
+            ->recordActions([VoidLedgerEntryAction::make()]);
     }
 
     public static function getPages(): array

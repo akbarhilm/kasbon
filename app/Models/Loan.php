@@ -6,6 +6,7 @@ use App\Enums\LoanStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Loan extends Model
@@ -39,5 +40,18 @@ class Loan extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function installments(): HasMany
+    {
+        return $this->hasMany(LoanInstallment::class)->orderBy('no');
+    }
+
+    /** Cicilan berikutnya yang belum dibayar. */
+    public function nextInstallment(): HasOne
+    {
+        return $this->hasOne(LoanInstallment::class)->ofMany(['no' => 'min'], function ($query) {
+            $query->whereNull('payment_id');
+        });
     }
 }

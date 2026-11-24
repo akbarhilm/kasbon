@@ -87,7 +87,7 @@ class LoanFlowTest extends TestCase
         return app(LedgerService::class)->balance($this->branch->id);
     }
 
-    private function disburse(int $pokok = 5_000_000, int $tenor = 3): Loan
+    private function disburse(int $pokok = 5_000_000, int $tenor = 1): Loan
     {
         return app(LoanService::class)->disburse(
             $this->borrower,
@@ -99,16 +99,16 @@ class LoanFlowTest extends TestCase
         );
     }
 
-    private function settle(Loan $loan, string $paidAt, ?int $denda = null, ?string $alasan = null)
+    private function settle(Loan $loan, string $paidAt)
     {
-        return app(PaymentService::class)->settle($loan, $this->at($paidAt), $denda, $alasan, $this->user);
+        return app(PaymentService::class)->settle($loan, $this->at($paidAt), $this->user);
     }
 
     public function test_disbursement_posts_ledger_and_sets_due_date(): void
     {
         $loan = $this->disburse();
 
-        $this->assertSame('2026-09-01', $loan->jatuh_tempo->toDateString());
+        $this->assertSame('2026-07-01', $loan->jatuh_tempo->toDateString());
         $this->assertSame(500_000, $loan->biaya_admin);
         // 10.000.000 - 5.000.000 (pinjaman) + 500.000 (administrasi)
         $this->assertSame(5_500_000, $this->balance());
@@ -137,7 +137,7 @@ class LoanFlowTest extends TestCase
     public function test_on_time_settlement_has_no_penalty_and_frees_borrower(): void
     {
         $loan = $this->disburse();
-        $payment = $this->settle($loan, '2026-09-01 10:00');
+        $payment = $this->settle($loan, '2026-07-01 10:00');
 
         $this->assertSame(0, $payment->denda_final);
         $this->assertSame(LoanStatus::Lunas, $loan->fresh()->status);
@@ -151,7 +151,7 @@ class LoanFlowTest extends TestCase
     public function test_late_settlement_adds_one_period_penalty(): void
     {
         $loan = $this->disburse();
-        $payment = $this->settle($loan, '2026-09-10 10:00');
+        $payment = $this->settle($loan, '2026-07-10 10:00');
 
         $this->assertSame(500_000, $payment->denda_sistem);
         $this->assertSame(500_000, $payment->denda_final);
@@ -161,28 +161,9 @@ class LoanFlowTest extends TestCase
     public function test_forty_days_late_adds_two_periods_penalty(): void
     {
         $loan = $this->disburse();
-        $payment = $this->settle($loan, '2026-10-11 10:00');
+        $payment = $this->settle($loan, '2026-08-11 10:00');
 
         $this->assertSame(1_000_000, $payment->denda_final);
-    }
-
-    public function test_changing_penalty_requires_reason(): void
-    {
-        $loan = $this->disburse();
-
-        try {
-            $this->settle($loan, '2026-09-10 10:00', 0, null);
-            $this->fail('Perubahan denda tanpa alasan seharusnya ditolak.');
-        } catch (ValidationException) {
-            $this->assertSame(LoanStatus::Aktif, $loan->fresh()->status);
-        }
-
-        $payment = $this->settle($loan, '2026-09-10 10:00', 0, 'Dispensasi atas persetujuan pimpinan');
-
-        $this->assertSame(500_000, $payment->denda_sistem);
-        $this->assertSame(0, $payment->denda_final);
-        $this->assertSame(10_500_000, $this->balance());
-        $this->assertSame(0, LedgerEntry::where('pos', LedgerPos::Denda)->count());
     }
 
     public function test_ledger_entries_cannot_be_changed_or_deleted(): void

@@ -22,6 +22,7 @@ use Filament\Schemas\Components\Utilities\Set;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Validation\ValidationException;
+use Filament\Support\RawJs;
 
 class ListLedgerEntries extends ListRecords
 {
@@ -54,6 +55,7 @@ class ListLedgerEntries extends ListRecords
                 ->hidden(fn (): bool => LedgerEntry::query()
                     ->where('branch_id', auth()->user()->branch_id)
                     ->where('pos', LedgerPos::SaldoAwal)
+                    ->whereDoesntHave('void') // saldo awal yang dibatalkan boleh diinput ulang
                     ->exists()),
             $this->masukAction('tambah_modal', 'Tambah modal', LedgerPos::PenambahanModal),
             $this->masukAction('bunga_bank', 'Bunga bank', LedgerPos::BungaBank),
@@ -82,6 +84,8 @@ class ListLedgerEntries extends ListRecords
                 TextInput::make('jumlah')
                     ->numeric()
                     ->integer()
+                    ->mask(RawJs::make('$money($input)'))
+                    ->stripCharacters(',')
                     ->minValue(1)
                     ->prefix('Rp')
                     ->required()
@@ -120,7 +124,8 @@ class ListLedgerEntries extends ListRecords
             ->visible(fn (): bool => auth()->user()?->role === Role::Cabang)
             ->modalHeading($label)
             ->schema([
-                TextInput::make('jumlah')->numeric()->integer()->minValue(1)->prefix('Rp')->required(),
+                TextInput::make('jumlah')->numeric()->integer()->mask(RawJs::make('$money($input)'))
+                    ->stripCharacters(',')->minValue(1)->prefix('Rp')->required(),
                 DateTimePicker::make('waktu')->label('Tanggal dan jam')->seconds(false)->default(fn () => now())->required(),
                 TextInput::make('keterangan')->maxLength(255),
             ])
@@ -179,6 +184,8 @@ class ListLedgerEntries extends ListRecords
                 TextInput::make('jumlah')
                     ->numeric()
                     ->integer()
+                    ->mask(RawJs::make('$money($input)'))
+                    ->stripCharacters(',')
                     ->minValue(1)
                     ->prefix('Rp')
                     ->required()

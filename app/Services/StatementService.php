@@ -27,7 +27,7 @@ final class StatementService
         $opening = $this->signedTotal($branchId, $from);
 
         $entries = LedgerEntry::query()
-            ->with('loan.borrower')
+            ->with(['loan.borrower', 'void'])
             ->when($branchId, fn (Builder $q) => $q->where('branch_id', $branchId))
             ->whereBetween('waktu', [$from, $to])
             ->orderBy('waktu')
@@ -63,7 +63,7 @@ final class StatementService
                 'waktu' => $entry->waktu,
                 'cabang' => (string) ($branchNames[$entry->branch_id] ?? ''),
                 'pos' => $entry->pos->label(),
-                'keterangan' => trim(($entry->keterangan ?? '') . ($borrower ? ' - ' . $borrower : '')),
+                'keterangan' => trim(($entry->keterangan ?? '') . ($borrower ? ' - ' . $borrower : '') . ($entry->void ? ' [dibatalkan]' : '')),
                 'masuk' => $masuk,
                 'keluar' => $keluar,
                 'saldo' => $running,

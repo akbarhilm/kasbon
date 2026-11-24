@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Loans\Pages;
 
+use App\Filament\Actions\AdjustPenaltyAction;
 use App\Filament\Actions\DeleteLoanAction;
 use App\Filament\Actions\LunasiAction;
 use App\Filament\Resources\Loans\LoanResource;
@@ -13,6 +14,6 @@ class ViewLoan extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [LunasiAction::make(), DeleteLoanAction::make()];
+        return [LunasiAction::make(), AdjustPenaltyAction::make(), DeleteLoanAction::make()];
     }
 }

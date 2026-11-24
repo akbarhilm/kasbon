@@ -20,6 +20,7 @@ class AuditLog extends Model
         'pengguna.diubah' => 'Pengguna diubah',
         'penarikan.dicatat' => 'Penarikan saldo',
         'biaya_bank.dicatat' => 'Biaya admin bank',
+        'entri_kas.dibatalkan' => 'Entri buku kas dibatalkan',
     ];
 
     protected $guarded = [];

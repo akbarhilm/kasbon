@@ -64,11 +64,12 @@ class Konsolidasi extends Page implements HasTable
             ->select('branches.*')
             ->selectRaw("(select coalesce(sum(case when l.arah = 'masuk' then l.jumlah else -l.jumlah end), 0) from ledger_entries l where l.branch_id = branches.id) as saldo")
             ->selectRaw("(select coalesce(sum(case when l.arah = 'masuk' then l.jumlah else -l.jumlah end), 0) from ledger_entries l where l.branch_id = branches.id and l.pos in ('administrasi', 'penarikan_administrasi', 'koreksi_administrasi')) as saldo_administrasi")
-            ->selectRaw("(select coalesce(sum(ln.pokok), 0) from loans ln where {$active}) as baki_pinjaman")
-            ->selectRaw("(select coalesce(sum(ln.pokok), 0) from loans ln where {$active} and ln.jatuh_tempo < ?) as baki_macet", [$today])
+            ->selectRaw("(select coalesce(sum(ln.sisa_pokok), 0) from loans ln where {$active}) as baki_pinjaman")
+            ->selectRaw("(select coalesce(sum(ln.sisa_pokok), 0) from loans ln where {$active} and ln.jatuh_tempo < ?) as baki_macet", [$today])
             ->selectRaw("(select count(*) from loans ln where {$active} and ln.jatuh_tempo < ?) as jumlah_menunggak", [$today])
-            ->selectRaw("(select coalesce(sum(l.jumlah), 0) from ledger_entries l where l.branch_id = branches.id and l.pos = 'administrasi' and l.arah = 'masuk' and l.waktu between ? and ?) as pendapatan_administrasi", [$from, $to])
-            ->selectRaw("(select coalesce(sum(l.jumlah), 0) from ledger_entries l where l.branch_id = branches.id and l.pos = 'penambahan_modal' and l.arah = 'masuk' and l.waktu between ? and ?) as penambahan_modal", [$from, $to]);
+            ->selectRaw("(select coalesce(sum(l.jumlah), 0) from ledger_entries l where l.branch_id = branches.id and l.pos = 'administrasi' and l.arah = 'masuk' and (l.loan_id is null or l.loan_id not in (select dl.id from loans dl where dl.deleted_at is not null)) and l.waktu between ? and ?) as pendapatan_administrasi", [$from, $to])
+            ->selectRaw("(select coalesce(sum(l.jumlah), 0) from ledger_entries l where l.branch_id = branches.id and l.pos = 'penambahan_modal' and l.arah = 'masuk' and not exists (select 1 from ledger_voids v where v.ledger_entry_id = l.id) and l.waktu between ? and ?) as penambahan_modal", [$from, $to])
+            ->selectRaw("(select coalesce(sum(m.jumlah), 0) from modal_disetor m where m.branch_id = branches.id) as modal_disetor");
     }
 
     public function table(Table $table): Table
@@ -103,6 +104,8 @@ class Konsolidasi extends Page implements HasTable
                 TextColumn::make('pendapatan_administrasi')->label('Pendapatan administrasi')->formatStateUsing($rupiah)->alignEnd()->sortable()
                     ->summarize(Sum::make()->label('Total')->formatStateUsing($rupiah)),
                 TextColumn::make('penambahan_modal')->label('Penambahan modal')->formatStateUsing($rupiah)->alignEnd()->sortable()
+                    ->summarize(Sum::make()->label('Total')->formatStateUsing($rupiah)),
+                TextColumn::make('modal_disetor')->label('Modal disetor (catatan)')->formatStateUsing($rupiah)->alignEnd()->sortable()
                     ->summarize(Sum::make()->label('Total')->formatStateUsing($rupiah)),
             ])
             ->defaultSort('baki_macet', 'desc')

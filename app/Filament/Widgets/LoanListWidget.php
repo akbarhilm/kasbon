@@ -34,7 +34,8 @@ abstract class LoanListWidget extends TableWidget
             ->heading($this->listHeading())
             ->query(fn (): Builder => $this->scopeQuery(
                 Loan::query()
-                    ->with('borrower')
+                    ->with(['borrower', 'nextInstallment'])
+                    ->withCount('installments')
                     ->where('branch_id', $this->branch())
                     ->where('status', LoanStatus::Aktif),
             ))
@@ -48,8 +49,14 @@ abstract class LoanListWidget extends TableWidget
                     ->formatStateUsing(fn ($state): string => $state > 0 ? "{$state} hari" : '-')
                     ->badge()
                     ->color(fn ($state): string => $state > 0 ? 'danger' : 'gray'),
-                TextColumn::make('pokok')
-                    ->label('Pokok')
+                TextColumn::make('cicilan_ke')
+                    ->label('Cicilan')
+                    ->state(fn (Loan $record): string => $record->nextInstallment
+                        ? $record->nextInstallment->no . ' dari ' . $record->installments_count
+                        : '-'),
+                TextColumn::make('tagihan_pokok')
+                    ->label('Pokok cicilan')
+                    ->state(fn (Loan $record): int => (int) ($record->nextInstallment?->pokok ?? $record->sisa_pokok))
                     ->formatStateUsing(fn ($state) => Rupiah::format($state))
                     ->alignEnd(),
                 TextColumn::make('denda_berjalan')
@@ -59,7 +66,7 @@ abstract class LoanListWidget extends TableWidget
                     ->alignEnd(),
                 TextColumn::make('total_tagihan')
                     ->label('Total tagihan')
-                    ->state(fn (Loan $record): int => $record->pokok + $this->dendaBerjalan($record))
+                    ->state(fn (Loan $record): int => (int) ($record->nextInstallment?->pokok ?? $record->sisa_pokok) + $this->dendaBerjalan($record))
                     ->formatStateUsing(fn ($state) => Rupiah::format($state))
                     ->alignEnd(),
             ])
